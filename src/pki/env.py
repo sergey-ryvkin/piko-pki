@@ -1,6 +1,7 @@
 import os, os.path, sys, pwd, grp, fcntl
 from collections.abc import Mapping
 import yaml, jinja2
+from builtins import Exception as CoreException
 
 KEY_USAGE=(
     'digitalSignature',
@@ -43,9 +44,10 @@ EXTENDED_KEY_USAGE={
 }
 
 
+class SettingsException(CoreException):
+    pass
+
 class Settings(Mapping):
-    class Exception(Exception):
-        pass
 
     __fields__=('uid','usr','gid','grp','cfg')
 
@@ -106,14 +108,14 @@ class Settings(Mapping):
         try:
             self._uid=pwd.getpwnam(user).pw_uid
         except KeyError as exception:
-            raise type(self).Exception("Unknown user \"%s\"" % user) from exception
+            raise SettingsException("Unknown user \"%s\"" % user) from exception
         self._usr=user
 
     def setGroup(self, group):
         try:
             self._gid=grp.getgrnam(group).gr_gid
         except KeyError as exception:
-            raise type(self).Exception("Unknown group \"%s\"" % group) from exception
+            raise SettingsException("Unknown group \"%s\"" % group) from exception
         self._grp=group
 
     def setConfig(self, path):
@@ -160,10 +162,11 @@ class Configuration(dict):
                 self.render(v, **data)
 
 
-class SerialDB:
-    class Exception(Exception):
-        pass
+class SerialDBException(CoreException):
+    pass
 
+
+class SerialDB:
     def __init__(self, settings):
         self._settings=settings
         self._fd=None
@@ -173,7 +176,7 @@ class SerialDB:
 
     def __enter__(self):
         if self._fd != None:
-            raise Exception("Already acquired")
+            raise SerialDBException("Already acquired")
         flags=os.O_APPEND | os.O_RDWR | os.O_CREAT
         self._fd=os.open(self._settings['cfg']['SERIAL_DB_PATH'], flags, 0o0640)
         fcntl.flock(self._fd, fcntl.LOCK_EX)
@@ -181,7 +184,7 @@ class SerialDB:
 
     def __exit__(self, exc_type, exc, traceback):
         if self._fd == None:
-            raise Exception("Already released")
+            raise SerialDBException("Already released")
         fcntl.flock(self._fd, fcntl.LOCK_UN)
         os.close(self._fd)
         self._fd=None
@@ -206,5 +209,5 @@ class SerialDB:
 
     def write(self, serial):
         if self._fd == None:
-            raise type(self).Exception("Implicitly db locking is not allowed for write operation")
+            raise SerialDBException("Implicitly db locking is not allowed for write operation")
         return self._write(serial)
